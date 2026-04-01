@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: exam-aura-backend
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn backend_src.main:app --host 0.0.0.0 --port 10000
+    envVars:
+      - key: MONGODB_URL
+        sync: false
+      - key: DATABASE_NAME
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ALGORITHM
+        value: HS256
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "1440"
+      - key: GROQ_API_KEY
+        sync: false
