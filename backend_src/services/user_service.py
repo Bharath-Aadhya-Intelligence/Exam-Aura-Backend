@@ -14,7 +14,7 @@ async def create_user(user: UserCreate):
         "created_at": datetime.utcnow()
     }
     result = await db["users"].insert_one(user_in_db)
-    user_in_db["_id"] = str(result.inserted_id)
+    user_in_db["id"] = str(result.inserted_id)
     return user_in_db
 
 async def get_user_by_email(email: str):
