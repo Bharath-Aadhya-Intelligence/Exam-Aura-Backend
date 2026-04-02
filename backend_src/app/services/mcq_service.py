@@ -4,10 +4,14 @@ from ..models.schemas import MCQQuestion
 from ..db.mongodb import get_database
 from bson import ObjectId
 
-async def get_daily_questions(user_id: str, count: int = 5) -> List[MCQQuestion]:
+async def get_daily_questions(user_id: str, category: str = None, count: int = 10) -> List[MCQQuestion]:
     db = get_database()
-    # For now, return sample questions if DB is empty
-    cursor = db["questions"].find().limit(count)
+    
+    query = {}
+    if category:
+        query["category"] = category
+        
+    cursor = db["questions"].find(query).limit(count)
     questions = await cursor.to_list(length=count)
     
     if not questions:
@@ -17,6 +21,7 @@ async def get_daily_questions(user_id: str, count: int = 5) -> List[MCQQuestion]
                 "_id": ObjectId(),
                 "subject": "Physics",
                 "topic": "Newton's Laws",
+                "category": category or "JEE",
                 "question_text": "What is the unit of force?",
                 "options": ["Newton", "Joule", "Watt", "Pascal"],
                 "correct_option_index": 0,
@@ -26,12 +31,16 @@ async def get_daily_questions(user_id: str, count: int = 5) -> List[MCQQuestion]
                 "_id": ObjectId(),
                 "subject": "Chemistry",
                 "topic": "Atomic Structure",
+                "category": category or "JEE",
                 "question_text": "Which particle has a positive charge?",
                 "options": ["Electron", "Neutron", "Proton", "Photon"],
                 "correct_option_index": 2,
                 "explanation": "Protons have a positive charge of +1e."
             }
         ]
+        # Duplicate sample to reach count if needed for testing
+        while len(questions) < count and len(questions) > 0:
+            questions.append(questions[len(questions) % 2].copy())
     
     for q in questions:
         q["id"] = str(q["_id"])
