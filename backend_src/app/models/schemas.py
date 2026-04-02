@@ -2,10 +2,18 @@ from pydantic import BaseModel, EmailStr, Field
 from typing import Optional, List
 from datetime import datetime
 
+# Onboarding Models
+class OnboardingData(BaseModel):
+    selected_exam: str
+    exam_date: Optional[datetime] = None
+    confidence_level: float
+    study_styles: List[str]
+
 # User Models
 class UserBase(BaseModel):
     email: EmailStr
     name: str
+    profile: Optional[OnboardingData] = None
 
 class UserCreate(BaseModel):
     email: EmailStr
