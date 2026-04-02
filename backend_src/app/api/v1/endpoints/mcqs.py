@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 from typing import List
-from ....models.schemas import UserPublic, MCQQuestion
+from ....models.schemas import UserPublic, MCQQuestion, SessionSubmit
 from ....core.deps import get_current_user
 from ....services import mcq_service
 
@@ -15,9 +15,9 @@ async def get_daily_questions(
 
 @router.post("/submit-session")
 async def submit_session(
-    data: dict, 
+    data: SessionSubmit, 
     current_user: UserPublic = Depends(get_current_user)
 ):
     return await mcq_service.submit_session(
-        current_user.id, data.get("question_ids"), data.get("answers")
+        current_user.id, data.question_ids, data.answers
     )

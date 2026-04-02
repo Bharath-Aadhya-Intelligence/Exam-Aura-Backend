@@ -43,7 +43,7 @@ async def get_daily_questions(user_id: str, category: str = None, count: int = 1
             questions.append(questions[len(questions) % 2].copy())
     
     for q in questions:
-        q["id"] = str(q["_id"])
+        q["_id"] = str(q["_id"])  # Convert ObjectId to str so Pydantic alias "_id" -> id works
     return [MCQQuestion(**q) for q in questions]
 
 async def submit_session(user_id: str, question_ids: List[str], answers: List[int]):

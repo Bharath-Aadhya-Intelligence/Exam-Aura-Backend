@@ -48,6 +48,10 @@ class MCQQuestion(BaseModel):
     correct_option_index: int
     explanation: str
 
+class SessionSubmit(BaseModel):
+    question_ids: List[str]
+    answers: List[int]
+
 class PracticeSession(BaseModel):
     id: Optional[str] = Field(None, alias="_id")
     user_id: str
