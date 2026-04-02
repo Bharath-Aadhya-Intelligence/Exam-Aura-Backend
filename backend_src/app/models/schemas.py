@@ -13,6 +13,7 @@ class OnboardingData(BaseModel):
 class UserBase(BaseModel):
     email: EmailStr
     name: str
+    profile_photo: Optional[str] = None
     profile: Optional[OnboardingData] = None
 
 class UserCreate(BaseModel):
