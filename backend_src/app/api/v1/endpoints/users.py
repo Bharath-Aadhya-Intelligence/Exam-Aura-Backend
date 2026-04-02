@@ -9,6 +9,19 @@ router = APIRouter()
 async def read_users_me(current_user: UserPublic = Depends(get_current_user)):
     return current_user
 
+@router.patch("/me", response_model=UserPublic)
+async def update_users_me(
+    update_data: dict,
+    current_user: UserPublic = Depends(get_current_user)
+):
+    success = await user_service.update_user(current_user.email, update_data)
+    if not success:
+        raise HTTPException(status_code=400, detail="Update failed or no changes made")
+    
+    # Return updated user
+    updated_user = await user_service.get_user_by_email(current_user.email)
+    return updated_user
+
 @router.get("/profile", response_model=OnboardingData)
 async def get_profile(current_user: UserPublic = Depends(get_current_user)):
     if not current_user.profile:

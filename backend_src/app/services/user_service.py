@@ -53,3 +53,11 @@ async def update_profile_photo(email: str, file: UploadFile):
         {"$set": {"profile_photo": data_uri}}
     )
     return result.modified_count > 0
+
+async def update_user(email: str, update_data: dict):
+    db = get_database()
+    result = await db["users"].update_one(
+        {"email": email},
+        {"$set": update_data}
+    )
+    return result.modified_count > 0
