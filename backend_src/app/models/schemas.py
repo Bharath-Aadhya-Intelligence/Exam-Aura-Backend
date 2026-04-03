@@ -84,5 +84,19 @@ class ChatHistory(BaseModel):
     messages: List[ChatMessage]
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
+class AnalyticsCache(BaseModel):
+    user_id: str
+    last_session_time: datetime
+    data: Dict[str, Any]
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class AnalyticsDetailedResponse(BaseModel):
+    activity: Dict[str, Any]
+    performance: Dict[str, Any]
+    trend: Dict[str, Any]
+    weak_topics: List[Dict[str, Any]]
+    insights: List[str]
+    recommendation: Dict[str, Any]
+
 class ChatSessionCreate(BaseModel):
     title: Optional[str] = "New Chat"

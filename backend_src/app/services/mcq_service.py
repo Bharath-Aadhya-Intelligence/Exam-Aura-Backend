@@ -110,28 +110,44 @@ async def get_daily_questions(user_id: str, category: str = None, count: int = 2
 async def submit_session(user_id: str, question_ids: List[str], answers: List[int]):
     db = get_database()
     
-    # Calculate score and subject breakdown
+    # Calculate score, subject breakdown, and topic breakdown
     score = 0
     subject_stats = {}
+    topic_stats = {}
     
     for q_id, ans in zip(question_ids, answers):
         q = await db["questions"].find_one({"_id": ObjectId(q_id)})
         if q:
             subj = q.get("subject", "General")
+            topic = q.get("topic", "General")
+            
+            # Subject stats
             if subj not in subject_stats:
                 subject_stats[subj] = {"correct": 0, "total": 0}
-            
             subject_stats[subj]["total"] += 1
+            
+            # Topic stats
+            if topic not in topic_stats:
+                topic_stats[topic] = {"correct": 0, "total": 0}
+            topic_stats[topic]["total"] += 1
+            
             if q["correct_option_index"] == ans:
                 score += 1
                 subject_stats[subj]["correct"] += 1
+                topic_stats[topic]["correct"] += 1
     
     session = {
         "user_id": user_id,
         "score": score,
         "total": len(question_ids),
         "subject_breakdown": subject_stats,
+        "topic_breakdown": topic_stats,
         "timestamp": datetime.utcnow()
     }
     await db["sessions"].insert_one(session)
-    return {"score": score, "total": len(question_ids), "breakdown": subject_stats}
+    return {
+        "score": score, 
+        "total": len(question_ids), 
+        "breakdown": subject_stats,
+        "topic_breakdown": topic_stats
+    }
