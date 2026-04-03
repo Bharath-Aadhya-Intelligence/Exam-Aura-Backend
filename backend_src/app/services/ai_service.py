@@ -42,8 +42,13 @@ async def call_gemini(messages: List[Dict[str, str]]) -> str:
     if not settings.GEMINI_API_KEY:
         return "AI Error: Gemini API Key is missing. Please add it to your .env file."
     
-    # Explicitly configure using REST to avoid gRPC v1beta issues on some cloud platforms
-    genai.configure(api_key=settings.GEMINI_API_KEY, transport='rest')
+    # Definitive fix for 404/v1beta issue on Render:
+    # Force the use of the stable 'v1' endpoint and 'rest' transport.
+    genai.configure(
+        api_key=settings.GEMINI_API_KEY, 
+        transport='rest',
+        client_options={'api_endpoint': 'https://generativelanguage.googleapis.com/v1/'}
+    )
     
     # Standardize messages for Gemini format
     system_instruction = ""
@@ -101,8 +106,12 @@ async def check_model_status() -> Dict[str, Any]:
         return status
 
     try:
-        genai.configure(api_key=settings.GEMINI_API_KEY, transport='rest')
-        # Try a very simple call with the most stable model as a test
+        genai.configure(
+            api_key=settings.GEMINI_API_KEY, 
+            transport='rest',
+            client_options={'api_endpoint': 'https://generativelanguage.googleapis.com/v1/'}
+        )
+        # Try a very simple call
         model = genai.GenerativeModel('gemini-1.5-flash')
         response = await model.generate_content_async("ping")
         if response:
