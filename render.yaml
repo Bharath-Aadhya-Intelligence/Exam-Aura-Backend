@@ -8,12 +8,14 @@ services:
       - key: MONGODB_URL
         sync: false
       - key: DATABASE_NAME
-        sync: false
+        value: "exam-aura-db"
       - key: SECRET_KEY
         generateValue: true
       - key: ALGORITHM
         value: HS256
       - key: ACCESS_TOKEN_EXPIRE_MINUTES
         value: "1440"
-      - key: GROQ_API_KEY
+      - key: USE_LOCAL_MODEL
+        value: "false" # Set to false for Cloud/Render deployment
+      - key: OPENAI_API_KEY
         sync: false

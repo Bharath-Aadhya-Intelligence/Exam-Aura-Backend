@@ -27,6 +27,30 @@ def get_embedding_model():
 
 # Groq support removed for Phi-3 Exclusive Production
 
+async def call_openai(messages: List[Dict[str, str]], model: str = "gpt-4o-mini") -> str:
+    if not settings.OPENAI_API_KEY:
+        return "AI Error: OpenAI API Key is missing. Please add it to your .env file."
+        
+    url = "https://api.openai.com/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {settings.OPENAI_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "model": model,
+        "messages": messages,
+        "temperature": 0.7
+    }
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(url, headers=headers, json=payload, timeout=60.0)
+            if response.status_code == 200:
+                data = response.json()
+                return data["choices"][0]["message"]["content"]
+            return f"Error from OpenAI: {response.text}"
+        except Exception as e:
+            return f"Failed to connect to OpenAI: {str(e)}"
+
 async def call_ollama(messages: List[Dict[str, str]], model: str = None) -> str:
     if not model:
         model = settings.LOCAL_MODEL_NAME
@@ -137,12 +161,14 @@ async def get_ai_explanation(question_text: str, student_answer: str, correct_an
     return await chat_with_ai(messages)
 
 async def chat_with_ai(messages: List[Dict[str, str]]) -> str:
-    """General purpose chat with Phi-3."""
-    # Exclusive Phi-3 (Ollama) Implementation
-    response = await call_ollama(messages)
-    if "Failed to connect to Ollama" in response:
-        return "AI service is currently offline. Please ensure Ollama is running locally with Phi-3."
-    return response
+    """General purpose chat with Phi-3 (Local) or OpenAI (Cloud)."""
+    if settings.USE_LOCAL_MODEL:
+        response = await call_ollama(messages)
+        if "Failed to connect to Ollama" in response:
+            return "Local AI is offline. Please ensure Ollama is running or set USE_LOCAL_MODEL=False to use Cloud."
+        return response
+    else:
+        return await call_openai(messages)
 
 async def generate_mcqs(topic: str, subject: str, count: int = 5, difficulty: int = 3, exam_type: str = "NEET") -> List[Dict[str, Any]]:
     """Generates MCQs using Phi-3."""
@@ -175,9 +201,13 @@ async def generate_mcqs(topic: str, subject: str, count: int = 5, difficulty: in
         {"role": "user", "content": user_prompt}
     ]
     
-    response_text = await call_ollama(messages)
-    if "Failed to connect to Ollama" in response_text:
-        print("CRITICAL: Ollama is not responding.")
+    if settings.USE_LOCAL_MODEL:
+        response_text = await call_ollama(messages)
+    else:
+        response_text = await call_openai(messages)
+        
+    if "Failed to connect" in response_text or "Error from" in response_text:
+        print(f"CRITICAL: AI Error: {response_text}")
         return []
     
     try:
