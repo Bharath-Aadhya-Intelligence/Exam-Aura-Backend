@@ -42,58 +42,60 @@ async def call_gemini(messages: List[Dict[str, str]]) -> str:
     if not settings.GEMINI_API_KEY:
         return "AI Error: Gemini API Key is missing. Please add it to your .env file."
     
-    # STRICTLY force the 'v1' stable endpoint via client_options and use 'rest' transport
-    genai.configure(
-        api_key=settings.GEMINI_API_KEY, 
-        transport='rest',
-        client_options={'api_version': 'v1'}
-    )
-    
     # Standardize messages for Gemini format
-    system_instruction = ""
-    chat_history = []
-    current_prompt = ""
+    gemini_contents = []
     
+    # Gemini REST API expects contents: [{"role": "user", "parts": [{"text": "..."}]}]
+    # NOTE: System instruction should be special, but for direct REST we can prepend or use system_instruction field
+    system_prompt = ""
     for msg in messages:
         if msg['role'] == 'system':
-            system_instruction = msg['content']
-        elif msg['role'] == 'user':
-            chat_history.append({"role": "user", "parts": [msg['content']]})
-        elif msg['role'] in ['assistant', 'model']:
-            chat_history.append({"role": "model", "parts": [msg['content']]})
-    
-    if chat_history:
-        current_prompt = chat_history[-1]['parts'][0]
-        chat_history = chat_history[:-1]
-    else:
-        return "No prompt provided."
+            system_prompt = msg['content']
+        else:
+            role = 'user' if msg['role'] == 'user' else 'model'
+            gemini_contents.append({
+                "role": role,
+                "parts": [{"text": msg['content']}]
+            })
+            
+    if system_prompt and gemini_contents:
+        # Prepend system prompt to the first user message for simplicity and reliability
+        original_text = gemini_contents[0]["parts"][0]["text"]
+        gemini_contents[0]["parts"][0]["text"] = f"Instructions: {system_prompt}\n\nUser Question: {original_text}"
 
-    # Explicitly use 'models/' prefix required for v1 stable and some v2 models
+    # Try models confirmed as available for this key
     models_to_try = [
-        'models/gemini-2.0-flash-lite',
-        'models/gemini-2.0-flash-lite-001',
-        'models/gemini-1.5-flash',
-        'models/gemini-1.5-pro'
+        'gemini-2.0-flash-lite',
+        'gemini-2.0-flash-lite-001',
+        'gemini-1.5-flash',
+        'gemini-pro'
     ]
     
+    import httpx
     last_error = ""
-    for m_name in models_to_try:
-        try:
-            model = genai.GenerativeModel(
-                model_name=m_name, 
-                system_instruction=system_instruction if system_instruction else None
-            )
-            chat = model.start_chat(history=chat_history)
-            response = await chat.send_message_async(current_prompt)
-            return response.text
-        except Exception as e:
-            last_error = str(e)
-            continue
-            
-    return f"Failed to connect to Gemini: {last_error}"
+    
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        for m_name in models_to_try:
+            try:
+                url = f"https://generativelanguage.googleapis.com/v1/models/{m_name}:generateContent?key={settings.GEMINI_API_KEY}"
+                payload = {"contents": gemini_contents}
+                
+                response = await client.post(url, json=payload)
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    return data['candidates'][0]['content']['parts'][0]['text']
+                else:
+                    last_error = f"HTTP {response.status_code}: {response.text}"
+                    continue
+            except Exception as e:
+                last_error = str(e)
+                continue
+                
+    return f"Failed to connect to Gemini REST API: {last_error}"
 
 async def check_model_status() -> Dict[str, Any]:
-    """Verify if Gemini is accessible with version-specific models."""
+    """Verify if Gemini is accessible via direct REST API."""
     status = {
         "provider": "Google Gemini",
         "model": "gemini-2.0-flash-lite",
@@ -105,27 +107,26 @@ async def check_model_status() -> Dict[str, Any]:
         status["error"] = "Gemini API Key is missing"
         return status
 
-    try:
-        genai.configure(
-            api_key=settings.GEMINI_API_KEY, 
-            transport='rest',
-            client_options={'api_version': 'v1'}
-        )
-        # Try the model confirmed by the API key list
-        model = genai.GenerativeModel('models/gemini-2.0-flash-lite')
-        response = await model.generate_content_async("ping")
-        if response:
-            status["reachable"] = True
-    except Exception as e:
-        # If 2.0 fails, try 1.5 flash
+    import httpx
+    async with httpx.AsyncClient(timeout=10.0) as client:
         try:
-            model = genai.GenerativeModel('models/gemini-1.5-flash')
-            response = await model.generate_content_async("ping")
-            if response:
+            url = f"https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash-lite:generateContent?key={settings.GEMINI_API_KEY}"
+            payload = {"contents": [{"parts": [{"text": "ping"}]}]}
+            
+            response = await client.post(url, json=payload)
+            if response.status_code == 200:
                 status["reachable"] = True
-                status["model"] = "models/gemini-1.5-flash (fallback)"
-        except Exception as e2:
-            status["error"] = f"All models unreachable. 2.0-Lite Error: {str(e)} | 1.5-Flash Error: {str(e2)}"
+            else:
+                # Try fallback for status check
+                url_fallback = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={settings.GEMINI_API_KEY}"
+                response_fb = await client.post(url_fallback, json=payload)
+                if response_fb.status_code == 200:
+                    status["reachable"] = True
+                    status["model"] = "gemini-1.5-flash (fallback)"
+                else:
+                    status["error"] = f"REST Error: {response.status_code} - {response.text}"
+        except Exception as e:
+            status["error"] = f"Connection Exception: {str(e)}"
             
     return status
 
