@@ -42,40 +42,50 @@ async def call_gemini(messages: List[Dict[str, str]]) -> str:
     if not settings.GEMINI_API_KEY:
         return "AI Error: Gemini API Key is missing. Please add it to your .env file."
         
-    try:
-        model = genai.GenerativeModel(model_name='gemini-1.5-flash')
-        
-        # Convert messages to Gemini format
-        # Gemini expects 'user' or 'model' roles, and content.
-        # System prompt should be passed separately or as the first message with a specific instruction.
-        
-        system_instruction = ""
-        chat_history = []
-        
-        for msg in messages:
-            if msg['role'] == 'system':
-                system_instruction = msg['content']
-            elif msg['role'] == 'user':
-                chat_history.append({"role": "user", "parts": [msg['content']]})
-            elif msg['role'] in ['assistant', 'model']:
-                chat_history.append({"role": "model", "parts": [msg['content']]})
+    # Standardize messages for Gemini format
+    system_instruction = ""
+    chat_history = []
+    current_prompt = ""
+    
+    for msg in messages:
+        if msg['role'] == 'system':
+            system_instruction = msg['content']
+        elif msg['role'] == 'user':
+            chat_history.append({"role": "user", "parts": [msg['content']]})
+        elif msg['role'] in ['assistant', 'model']:
+            chat_history.append({"role": "model", "parts": [msg['content']]})
+    
+    if chat_history:
+        current_prompt = chat_history[-1]['parts'][0]
+        chat_history = chat_history[:-1]
+    else:
+        return "No prompt provided."
 
-        # Start chat with system instruction if present
-        chat = model.start_chat(history=chat_history[:-1]) if chat_history else model.start_chat()
-        
-        # Last message is the current prompt
-        last_msg = chat_history[-1]['parts'][0] if chat_history else ""
-        
-        if system_instruction:
-            # Prepend system instruction to the prompt if not supported directly in start_chat yet (depends on SDK version)
-            # Newer versions support system_instruction in GenerativeModel constructor
-            model = genai.GenerativeModel('gemini-1.5-flash', system_instruction=system_instruction)
-            chat = model.start_chat(history=chat_history[:-1]) if chat_history else model.start_chat()
-
-        response = await chat.send_message_async(last_msg)
-        return response.text
-    except Exception as e:
-        return f"Failed to connect to Gemini: {str(e)}"
+    # Try multiple identifiers to resolve the 404/v1beta/regional restriction issue
+    models_to_try = [
+        'gemini-1.5-flash',
+        'gemini-1.5-flash-latest',
+        'gemini-1.5-pro',
+        'gemini-1.0-pro'
+    ]
+    
+    last_error = ""
+    for m_name in models_to_try:
+        try:
+            # Initialize model with system instruction if provided
+            if system_instruction:
+                model = genai.GenerativeModel(model_name=m_name, system_instruction=system_instruction)
+            else:
+                model = genai.GenerativeModel(model_name=m_name)
+                
+            chat = model.start_chat(history=chat_history)
+            response = await chat.send_message_async(current_prompt)
+            return response.text
+        except Exception as e:
+            last_error = str(e)
+            continue # Try next model
+            
+    return f"Failed to connect to Gemini: {last_error}"
 
 async def check_model_status() -> Dict[str, Any]:
     """Verify if Gemini is accessible."""
