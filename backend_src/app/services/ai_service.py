@@ -44,9 +44,6 @@ async def call_gemini(messages: List[Dict[str, str]]) -> str:
     
     # Standardize messages for Gemini format
     gemini_contents = []
-    
-    # Gemini REST API expects contents: [{"role": "user", "parts": [{"text": "..."}]}]
-    # NOTE: System instruction should be special, but for direct REST we can prepend or use system_instruction field
     system_prompt = ""
     for msg in messages:
         if msg['role'] == 'system':
@@ -63,22 +60,22 @@ async def call_gemini(messages: List[Dict[str, str]]) -> str:
         original_text = gemini_contents[0]["parts"][0]["text"]
         gemini_contents[0]["parts"][0]["text"] = f"Instructions: {system_prompt}\n\nUser Question: {original_text}"
 
-    # Try wide range of models to avoid quota/availability issues
+    # Use the EXACT models confirmed by our API listing for this key
     models_to_try = [
         'gemini-2.0-flash-lite',
-        'gemini-1.5-flash-8b',
-        'gemini-1.5-flash-latest',
         'gemini-2.0-flash-exp',
-        'gemini-1.5-flash'
+        'gemini-2.0-flash',
+        'gemini-1.5-flash-8b'
     ]
     
     import httpx
     last_error = ""
     
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=45.0) as client:
         for m_name in models_to_try:
             try:
-                url = f"https://generativelanguage.googleapis.com/v1/models/{m_name}:generateContent?key={settings.GEMINI_API_KEY}"
+                # IMPORTANT: Use v1beta for these newer models which are still in rollout phase on some accounts
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{m_name}:generateContent?key={settings.GEMINI_API_KEY}"
                 payload = {"contents": gemini_contents}
                 
                 response = await client.post(url, json=payload)
@@ -96,7 +93,7 @@ async def call_gemini(messages: List[Dict[str, str]]) -> str:
     return f"Failed to connect to Gemini REST API: {last_error}"
 
 async def check_model_status() -> Dict[str, Any]:
-    """Verify if Gemini is accessible via direct REST API."""
+    """Verify if Gemini is accessible via direct v1beta REST API."""
     status = {
         "provider": "Google Gemini",
         "model": "gemini-2.0-flash-lite",
@@ -109,23 +106,17 @@ async def check_model_status() -> Dict[str, Any]:
         return status
 
     import httpx
-    async with httpx.AsyncClient(timeout=10.0) as client:
+    async with httpx.AsyncClient(timeout=15.0) as client:
         try:
-            url = f"https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash-lite:generateContent?key={settings.GEMINI_API_KEY}"
+            # Test confirmed working model
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key={settings.GEMINI_API_KEY}"
             payload = {"contents": [{"parts": [{"text": "ping"}]}]}
             
             response = await client.post(url, json=payload)
             if response.status_code == 200:
                 status["reachable"] = True
             else:
-                # Try fallback for status check
-                url_fallback = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={settings.GEMINI_API_KEY}"
-                response_fb = await client.post(url_fallback, json=payload)
-                if response_fb.status_code == 200:
-                    status["reachable"] = True
-                    status["model"] = "gemini-1.5-flash (fallback)"
-                else:
-                    status["error"] = f"REST Error: {response.status_code} - {response.text}"
+                status["error"] = f"REST v1beta Error: {response.status_code} - {response.text}"
         except Exception as e:
             status["error"] = f"Connection Exception: {str(e)}"
             
