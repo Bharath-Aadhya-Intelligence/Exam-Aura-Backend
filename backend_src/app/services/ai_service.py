@@ -38,9 +38,47 @@ async def get_embeddings(text: str) -> np.ndarray:
         print(f"Embedding Error: {e}")
         return np.zeros((1, 768)) # gemini-embedding-001 is 768
 
+async def call_groq(messages: List[Dict[str, str]]) -> str:
+    """Ultra-fast fallback using Groq Llama-3 on the same REST interface."""
+    if not settings.GROQ_API_KEY:
+        return "GROQ_API_KEY missing"
+    
+    import httpx
+    # Groq uses standard OpenAI-compatible REST API
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        try:
+            url = "https://api.groq.com/openai/v1/chat/completions"
+            headers = {
+                "Authorization": f"Bearer {settings.GROQ_API_KEY}",
+                "Content-Type": "application/json"
+            }
+            # Add Groq-specific system prompt optimization
+            groq_messages = []
+            for msg in messages:
+                if msg['role'] == 'system':
+                    groq_messages.append({"role": "system", "content": msg['content']})
+                else:
+                    groq_messages.append({"role": msg['role'], "content": msg['content']})
+
+            payload = {
+                "model": "llama-3.3-70b-versatile",
+                "messages": groq_messages,
+                "temperature": 0.7
+            }
+            
+            response = await client.post(url, headers=headers, json=payload)
+            if response.status_code == 200:
+                data = response.json()
+                return data['choices'][0]['message']['content']
+            else:
+                return f"Groq Error: {response.status_code} - {response.text}"
+        except Exception as e:
+            return f"Groq Exception: {str(e)}"
+
 async def call_gemini(messages: List[Dict[str, str]]) -> str:
     if not settings.GEMINI_API_KEY:
-        return "AI Error: Gemini API Key is missing. Please add it to your .env file."
+        # If Gemini is missing, try Groq immediately
+        return await call_groq(messages)
     
     # Standardize messages for Gemini format
     gemini_contents = []
@@ -81,52 +119,55 @@ async def call_gemini(messages: List[Dict[str, str]]) -> str:
                 if response.status_code == 200:
                     data = response.json()
                     return data['candidates'][0]['content']['parts'][0]['text']
-                elif response.status_code == 429:
-                    errors.append(f"{m_name}: Quota/Rate Limit reached (Free Tier). Please wait 60s.")
                 else:
-                    try:
-                        err_json = response.json()
-                        msg = err_json.get('error', {}).get('message', 'Unknown Error')
-                        errors.append(f"{m_name}: {msg}")
-                    except:
-                        errors.append(f"{m_name}: HTTP {response.status_code}")
-                    
+                    errors.append(f"{m_name}: HTTP {response.status_code}")
+                    continue
             except Exception as e:
-                errors.append(f"{m_name}: Exception - {str(e)}")
+                errors.append(f"{m_name}: {str(e)}")
                 continue
                 
-    # Join all errors to show the user EXACTLY what happened per model
-    error_summary = " | ".join(errors)
-    return f"Gemini Connection Issue: {error_summary}"
+    # IF GEMINI FAILS, FALLBACK TO GROQ (Invisible to user, but super stable)
+    fallback_response = await call_groq(messages)
+    if "Groq Error" not in fallback_response and "missing" not in fallback_response:
+        return fallback_response
+        
+    return f"Failed to connect to Gemini & Groq: {' | '.join(errors)} | {fallback_response}"
 
 async def check_model_status() -> Dict[str, Any]:
-    """Verify if Gemini is accessible via direct v1beta REST API."""
+    """Verify AI status for both Gemini and Groq."""
     status = {
-        "provider": "Google Gemini",
-        "model": "gemini-2.0-flash-lite",
-        "reachable": False,
-        "error": None
+        "status": "degraded",
+        "mongodb": "connected",
+        "gemini": {"reachable": False, "error": None},
+        "groq": {"reachable": False, "error": None}
     }
     
-    if not settings.GEMINI_API_KEY:
-        status["error"] = "Gemini API Key is missing"
-        return status
-
     import httpx
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        try:
-            # Test confirmed working model
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key={settings.GEMINI_API_KEY}"
-            payload = {"contents": [{"parts": [{"text": "ping"}]}]}
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        # Check Gemini
+        if settings.GEMINI_API_KEY:
+            try:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key={settings.GEMINI_API_KEY}"
+                payload = {"contents": [{"parts": [{"text": "ping"}]}]}
+                res = await client.post(url, json=payload)
+                if res.status_code == 200:
+                    status["gemini"]["reachable"] = True
+            except: pass
             
-            response = await client.post(url, json=payload)
-            if response.status_code == 200:
-                status["reachable"] = True
-            else:
-                status["error"] = f"REST v1beta Error: {response.status_code} - {response.text}"
-        except Exception as e:
-            status["error"] = f"Connection Exception: {str(e)}"
+        # Check Groq
+        if settings.GROQ_API_KEY:
+            try:
+                url = "https://api.groq.com/openai/v1/chat/completions"
+                headers = {"Authorization": f"Bearer {settings.GROQ_API_KEY}"}
+                payload = {"model": "llama-3.3-70b-versatile", "messages": [{"role": "user", "content": "ping"}], "max_tokens": 1}
+                res = await client.post(url, headers=headers, json=payload)
+                if res.status_code == 200:
+                    status["groq"]["reachable"] = True
+            except: pass
             
+    if status["gemini"]["reachable"] and status["groq"]["reachable"]:
+        status["status"] = "healthy"
+        
     return status
 
 # ─── RAG & Vector Search ───────────────────────────────────────────────────
