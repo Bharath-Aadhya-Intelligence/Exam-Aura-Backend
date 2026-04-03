@@ -63,12 +63,13 @@ async def call_gemini(messages: List[Dict[str, str]]) -> str:
         original_text = gemini_contents[0]["parts"][0]["text"]
         gemini_contents[0]["parts"][0]["text"] = f"Instructions: {system_prompt}\n\nUser Question: {original_text}"
 
-    # Try models confirmed as available for this key
+    # Try wide range of models to avoid quota/availability issues
     models_to_try = [
         'gemini-2.0-flash-lite',
-        'gemini-2.0-flash-lite-001',
-        'gemini-1.5-flash',
-        'gemini-pro'
+        'gemini-1.5-flash-8b',
+        'gemini-1.5-flash-latest',
+        'gemini-2.0-flash-exp',
+        'gemini-1.5-flash'
     ]
     
     import httpx
