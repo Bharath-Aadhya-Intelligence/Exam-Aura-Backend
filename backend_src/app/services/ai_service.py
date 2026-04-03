@@ -43,7 +43,7 @@ async def call_gemini(messages: List[Dict[str, str]]) -> str:
         return "AI Error: Gemini API Key is missing. Please add it to your .env file."
         
     try:
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        model = genai.GenerativeModel(model_name='gemini-1.5-flash')
         
         # Convert messages to Gemini format
         # Gemini expects 'user' or 'model' roles, and content.
