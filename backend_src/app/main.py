@@ -16,4 +16,4 @@ app.include_router(api_router, prefix="/api/v1")
 
 @app.get("/")
 async def root():
-    return {"message": "Welcome to PrepAI API v1 (Professional Structure)"}
+    return {"message": "Welcome to Exam Aura API v1 (Version 2.x - Gemini Ironclad)"}
