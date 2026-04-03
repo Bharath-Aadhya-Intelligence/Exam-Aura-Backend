@@ -26,7 +26,7 @@ async def chat_ai(
     request: ChatRequest,
     current_user: UserPublic = Depends(get_current_user)
 ):
-    """General purpose chat with Phi-3 personalization."""
+    """General purpose chat with Gemini."""
     # Convert Pydantic models to dicts for the service
     messages = [msg.dict() for msg in request.messages]
     
@@ -38,6 +38,59 @@ async def chat_ai(
         })
         
     response = await ai_service.chat_with_ai(messages)
+    return {"message": response}
+
+@router.get("/sessions", response_model=List[ChatSession])
+async def get_sessions(current_user: UserPublic = Depends(get_current_user)):
+    """List all chat sessions for the current user."""
+    return await ai_service.get_user_sessions(current_user.id)
+
+@router.post("/sessions")
+async def create_session(
+    data: ChatSessionCreate, 
+    current_user: UserPublic = Depends(get_current_user)
+):
+    """Start a new chat session."""
+    session_id = await ai_service.create_chat_session(current_user.id, data.title)
+    return {"session_id": session_id}
+
+@router.get("/sessions/{session_id}")
+async def get_session_history(
+    session_id: str, 
+    current_user: UserPublic = Depends(get_current_user)
+):
+    """Load messages for an existing session."""
+    messages = await ai_service.get_session_history(session_id)
+    return {"messages": messages}
+
+@router.post("/sessions/{session_id}/messages")
+async def add_message_to_session(
+    session_id: str,
+    message: dict, 
+    current_user: UserPublic = Depends(get_current_user)
+):
+    """Send a message, save both to history, and get AI response."""
+    # 1. Save user message
+    await ai_service.save_chat_message(session_id, message)
+    
+    # 2. Get full history for context
+    history = await ai_service.get_session_history(session_id)
+    
+    # 3. Add system prompt
+    messages = list(history)
+    if not any(m["role"] == "system" for m in messages):
+        messages.insert(0, {
+            "role": "system", 
+            "content": "You are PrepAI, a helpful tutor for NEET and JEE students. Answer their questions accurately and concisely."
+        })
+    
+    # 4. Call AI
+    response = await ai_service.chat_with_ai(messages)
+    
+    # 5. Save AI response
+    assistant_msg = {"role": "assistant", "content": response}
+    await ai_service.save_chat_message(session_id, assistant_msg)
+    
     return {"message": response}
 
 @router.get("/status")

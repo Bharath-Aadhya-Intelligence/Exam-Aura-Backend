@@ -15,7 +15,5 @@ services:
         value: HS256
       - key: ACCESS_TOKEN_EXPIRE_MINUTES
         value: "1440"
-      - key: USE_LOCAL_MODEL
-        value: "false" # Set to false for Cloud/Render deployment
-      - key: OPENAI_API_KEY
+      - key: GEMINI_API_KEY
         sync: false

@@ -21,17 +21,14 @@ async def main():
     else:
         print("[ERROR] MongoDB is NOT reachable. Ensure your local MongoDB or Atlas link is correct in .env.")
 
-    print(f"\nChecking AI Model status (Local: {settings.USE_LOCAL_MODEL})")
+    print("\nChecking AI Model status (Google Gemini)")
     ai_status = await check_model_status()
     
     if ai_status["reachable"]:
-        print(f"[OK] AI Model '{ai_status['model']}' is reachable via {ai_status['provider']}.")
+        print(f"[OK] AI Model '{ai_status['model']}' is reachable.")
     else:
         print(f"[ERROR] AI Model is NOT ready: {ai_status['error']}")
-        if settings.USE_LOCAL_MODEL and "not found" in ai_status["error"].lower():
-            print(f"TIP: Run 'ollama pull {settings.LOCAL_MODEL_NAME}' to download the model.")
-        elif settings.USE_LOCAL_MODEL:
-             print("TIP: Ensure Ollama is running on your machine.")
+        print("TIP: Ensure your GEMINI_API_KEY is correct in .env.")
 
     print("\n=== Check Complete ===")
 

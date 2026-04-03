@@ -1,6 +1,6 @@
 from typing import List, Dict, Any
 import httpx
-from .ai_service import retrieve_context, call_ollama, chat_with_ai
+from .ai_service import retrieve_context, chat_with_ai
 from ..core.config import get_settings
 
 settings = get_settings()
@@ -13,7 +13,7 @@ async def query_classifier(query: str) -> str:
         "Return ONLY the category name."
     )
     messages = [{"role": "user", "content": prompt}]
-    return await call_ollama(messages)
+    return await chat_with_ai(messages)
 
 async def grounded_chat(query: str, user_level: str = "beginner") -> Dict[str, Any]:
     """Retrieve context and generate grounded response with confidence score."""

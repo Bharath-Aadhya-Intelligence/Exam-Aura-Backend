@@ -36,3 +36,4 @@ sentence-transformers
 langchain
 pdfplumber
 pypdf
+google-generativeai

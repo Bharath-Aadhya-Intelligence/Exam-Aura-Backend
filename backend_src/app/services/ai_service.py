@@ -14,7 +14,12 @@ except ImportError:
     faiss = None
     SentenceTransformer = None
 
+import google.generativeai as genai
+
 settings = get_settings()
+
+if settings.GEMINI_API_KEY:
+    genai.configure(api_key=settings.GEMINI_API_KEY)
 
 # Initialize Embedding Model (Lazy Loading)
 _embedding_model = None
@@ -25,82 +30,66 @@ def get_embedding_model():
         _embedding_model = SentenceTransformer(settings.EMBEDDING_MODEL_NAME)
     return _embedding_model
 
-# Groq support removed for Phi-3 Exclusive Production
-
-async def call_openai(messages: List[Dict[str, str]], model: str = "gpt-4o-mini") -> str:
-    if not settings.OPENAI_API_KEY:
-        return "AI Error: OpenAI API Key is missing. Please add it to your .env file."
+async def call_gemini(messages: List[Dict[str, str]]) -> str:
+    if not settings.GEMINI_API_KEY:
+        return "AI Error: Gemini API Key is missing. Please add it to your .env file."
         
-    url = "https://api.openai.com/v1/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {settings.OPENAI_API_KEY}",
-        "Content-Type": "application/json"
-    }
-    payload = {
-        "model": model,
-        "messages": messages,
-        "temperature": 0.7
-    }
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.post(url, headers=headers, json=payload, timeout=60.0)
-            if response.status_code == 200:
-                data = response.json()
-                return data["choices"][0]["message"]["content"]
-            return f"Error from OpenAI: {response.text}"
-        except Exception as e:
-            return f"Failed to connect to OpenAI: {str(e)}"
+    try:
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        
+        # Convert messages to Gemini format
+        # Gemini expects 'user' or 'model' roles, and content.
+        # System prompt should be passed separately or as the first message with a specific instruction.
+        
+        system_instruction = ""
+        chat_history = []
+        
+        for msg in messages:
+            if msg['role'] == 'system':
+                system_instruction = msg['content']
+            elif msg['role'] == 'user':
+                chat_history.append({"role": "user", "parts": [msg['content']]})
+            elif msg['role'] in ['assistant', 'model']:
+                chat_history.append({"role": "model", "parts": [msg['content']]})
 
-async def call_ollama(messages: List[Dict[str, str]], model: str = None) -> str:
-    if not model:
-        model = settings.LOCAL_MODEL_NAME
-    url = f"{settings.OLLAMA_BASE_URL}/api/chat"
-    payload = {
-        "model": model,
-        "messages": messages,
-        "stream": False
-    }
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.post(url, json=payload, timeout=120.0)
-            if response.status_code == 200:
-                data = response.json()
-                return data["message"]["content"]
-            return f"Error from Ollama: {response.text}"
-        except Exception as e:
-            return f"Failed to connect to Ollama: {str(e)}"
+        # Start chat with system instruction if present
+        chat = model.start_chat(history=chat_history[:-1]) if chat_history else model.start_chat()
+        
+        # Last message is the current prompt
+        last_msg = chat_history[-1]['parts'][0] if chat_history else ""
+        
+        if system_instruction:
+            # Prepend system instruction to the prompt if not supported directly in start_chat yet (depends on SDK version)
+            # Newer versions support system_instruction in GenerativeModel constructor
+            model = genai.GenerativeModel('gemini-1.5-flash', system_instruction=system_instruction)
+            chat = model.start_chat(history=chat_history[:-1]) if chat_history else model.start_chat()
+
+        response = await chat.send_message_async(last_msg)
+        return response.text
+    except Exception as e:
+        return f"Failed to connect to Gemini: {str(e)}"
 
 async def check_model_status() -> Dict[str, Any]:
-    """Verify if the AI model (local/cloud) is currently accessible."""
+    """Verify if Gemini is accessible."""
     status = {
-        "provider": "Local (Ollama)" if settings.USE_LOCAL_MODEL else "Cloud (Groq)",
-        "model": settings.LOCAL_MODEL_NAME if settings.USE_LOCAL_MODEL else "llama3",
+        "provider": "Google Gemini",
+        "model": "gemini-1.5-flash",
         "reachable": False,
         "error": None
     }
     
-    if settings.USE_LOCAL_MODEL:
-        url = f"{settings.OLLAMA_BASE_URL}/api/tags"
-        async with httpx.AsyncClient() as client:
-            try:
-                response = await client.get(url, timeout=5.0)
-                if response.status_code == 200:
-                    models = response.json().get("models", [])
-                    # Check if our specified model is in the list
-                    model_names = [m["name"] for m in models]
-                    if settings.LOCAL_MODEL_NAME in model_names or any(settings.LOCAL_MODEL_NAME in m for m in model_names):
-                        status["reachable"] = True
-                    else:
-                        status["error"] = f"Model '{settings.LOCAL_MODEL_NAME}' not found in Ollama. Available: {', '.join(model_names)}"
-                else:
-                    status["error"] = f"Ollama returned status {response.status_code}"
-            except Exception as e:
-                status["error"] = f"Could not connect to Ollama: {str(e)}"
-    else:
-        # Simple Groq reachability check (dummy)
-        status["reachable"] = bool(settings.GROQ_API_KEY and settings.GROQ_API_KEY != "your-groq-api-key")
-        if not status["reachable"]:
-            status["error"] = "Invalid or missing Groq API Key"
+    if not settings.GEMINI_API_KEY:
+        status["error"] = "Gemini API Key is missing"
+        return status
+
+    try:
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        # Simple test call
+        response = await model.generate_content_async("ping")
+        if response:
+            status["reachable"] = True
+    except Exception as e:
+        status["error"] = f"Could not connect to Gemini: {str(e)}"
             
     return status
 
@@ -161,17 +150,11 @@ async def get_ai_explanation(question_text: str, student_answer: str, correct_an
     return await chat_with_ai(messages)
 
 async def chat_with_ai(messages: List[Dict[str, str]]) -> str:
-    """General purpose chat with Phi-3 (Local) or OpenAI (Cloud)."""
-    if settings.USE_LOCAL_MODEL:
-        response = await call_ollama(messages)
-        if "Failed to connect to Ollama" in response:
-            return "Local AI is offline. Please ensure Ollama is running or set USE_LOCAL_MODEL=False to use Cloud."
-        return response
-    else:
-        return await call_openai(messages)
+    """General purpose chat with Google Gemini."""
+    return await call_gemini(messages)
 
 async def generate_mcqs(topic: str, subject: str, count: int = 5, difficulty: int = 3, exam_type: str = "NEET") -> List[Dict[str, Any]]:
-    """Generates MCQs using Phi-3."""
+    """Generates MCQs using Google Gemini."""
     # PRD §C.3 Difficulty Control Levers
     levers = {
         1: {"demand": "Direct recall", "scope": "Strictly in-text", "distractors": "Obviously wrong"},
@@ -201,10 +184,7 @@ async def generate_mcqs(topic: str, subject: str, count: int = 5, difficulty: in
         {"role": "user", "content": user_prompt}
     ]
     
-    if settings.USE_LOCAL_MODEL:
-        response_text = await call_ollama(messages)
-    else:
-        response_text = await call_openai(messages)
+    response_text = await call_gemini(messages)
         
     if "Failed to connect" in response_text or "Error from" in response_text:
         print(f"CRITICAL: AI Error: {response_text}")
@@ -229,3 +209,45 @@ async def generate_mcqs(topic: str, subject: str, count: int = 5, difficulty: in
     except Exception as e:
         print(f"Error parsing AI response: {e}")
         return []
+from datetime import datetime
+from bson import ObjectId
+
+async def create_chat_session(user_id: str, title: str = "New Chat") -> str:
+    db = get_database()
+    session = {
+        "user_id": user_id,
+        "title": title,
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow()
+    }
+    result = await db["chat_sessions"].insert_one(session)
+    return str(result.inserted_id)
+
+async def get_user_sessions(user_id: str) -> List[Dict[str, Any]]:
+    db = get_database()
+    cursor = db["chat_sessions"].find({"user_id": user_id}).sort("updated_at", -1)
+    sessions = await cursor.to_list(length=100)
+    for s in sessions:
+        s["_id"] = str(s["_id"])
+    return sessions
+
+async def get_session_history(session_id: str) -> List[Dict[str, Any]]:
+    db = get_database()
+    history = await db["chat_history"].find_one({"session_id": session_id})
+    if history:
+        return history["messages"]
+    return []
+
+async def save_chat_message(session_id: str, message: Dict[str, str]):
+    db = get_database()
+    # Update or create chat history for this session
+    await db["chat_history"].update_one(
+        {"session_id": session_id},
+        {"$push": {"messages": message}, "$set": {"updated_at": datetime.utcnow()}},
+        upsert=True
+    )
+    # Also update session's updated_at
+    await db["chat_sessions"].update_one(
+        {"_id": ObjectId(session_id)},
+        {"$set": {"updated_at": datetime.utcnow()}}
+    )
