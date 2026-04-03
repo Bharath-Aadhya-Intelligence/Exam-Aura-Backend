@@ -60,21 +60,19 @@ async def call_gemini(messages: List[Dict[str, str]]) -> str:
         original_text = gemini_contents[0]["parts"][0]["text"]
         gemini_contents[0]["parts"][0]["text"] = f"Instructions: {system_prompt}\n\nUser Question: {original_text}"
 
-    # Use the EXACT models confirmed by our API listing for this key
+    # Use the ONLY high-reliability models confirmed as available for THIS specific API key
+    # We remove old 1.5 fallbacks that cause misleading 404s when the primary hits a quota limit.
     models_to_try = [
         'gemini-2.0-flash-lite',
-        'gemini-2.0-flash-exp',
-        'gemini-2.0-flash',
-        'gemini-1.5-flash-8b'
+        'gemini-2.0-flash-exp'
     ]
     
     import httpx
-    last_error = ""
+    errors = []
     
     async with httpx.AsyncClient(timeout=45.0) as client:
         for m_name in models_to_try:
             try:
-                # IMPORTANT: Use v1beta for these newer models which are still in rollout phase on some accounts
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{m_name}:generateContent?key={settings.GEMINI_API_KEY}"
                 payload = {"contents": gemini_contents}
                 
@@ -83,14 +81,23 @@ async def call_gemini(messages: List[Dict[str, str]]) -> str:
                 if response.status_code == 200:
                     data = response.json()
                     return data['candidates'][0]['content']['parts'][0]['text']
+                elif response.status_code == 429:
+                    errors.append(f"{m_name}: Quota/Rate Limit reached (Free Tier). Please wait 60s.")
                 else:
-                    last_error = f"HTTP {response.status_code}: {response.text}"
-                    continue
+                    try:
+                        err_json = response.json()
+                        msg = err_json.get('error', {}).get('message', 'Unknown Error')
+                        errors.append(f"{m_name}: {msg}")
+                    except:
+                        errors.append(f"{m_name}: HTTP {response.status_code}")
+                    
             except Exception as e:
-                last_error = str(e)
+                errors.append(f"{m_name}: Exception - {str(e)}")
                 continue
                 
-    return f"Failed to connect to Gemini REST API: {last_error}"
+    # Join all errors to show the user EXACTLY what happened per model
+    error_summary = " | ".join(errors)
+    return f"Gemini Connection Issue: {error_summary}"
 
 async def check_model_status() -> Dict[str, Any]:
     """Verify if Gemini is accessible via direct v1beta REST API."""
