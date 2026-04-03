@@ -114,6 +114,7 @@ async def retrieve_context(query: str, top_k: int = 3) -> str:
         return ""
 
 async def get_ai_explanation(question_text: str, student_answer: str, correct_answer: str, user_profile: Optional[Dict[str, Any]] = None) -> str:
+    """Explains an MCQ question using context from NCERT."""
     # RAG: Retrieve context from NCERT
     context = await retrieve_context(question_text)
     
@@ -136,6 +137,7 @@ async def get_ai_explanation(question_text: str, student_answer: str, correct_an
     return await chat_with_ai(messages)
 
 async def chat_with_ai(messages: List[Dict[str, str]]) -> str:
+    """General purpose chat with Phi-3."""
     # Exclusive Phi-3 (Ollama) Implementation
     response = await call_ollama(messages)
     if "Failed to connect to Ollama" in response:
@@ -143,6 +145,7 @@ async def chat_with_ai(messages: List[Dict[str, str]]) -> str:
     return response
 
 async def generate_mcqs(topic: str, subject: str, count: int = 5, difficulty: int = 3, exam_type: str = "NEET") -> List[Dict[str, Any]]:
+    """Generates MCQs using Phi-3."""
     # PRD §C.3 Difficulty Control Levers
     levers = {
         1: {"demand": "Direct recall", "scope": "Strictly in-text", "distractors": "Obviously wrong"},

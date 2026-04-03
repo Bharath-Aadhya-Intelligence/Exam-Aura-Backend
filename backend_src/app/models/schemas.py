@@ -51,6 +51,10 @@ class MCQQuestion(BaseModel):
     bloom_level: Optional[str] = None
     estimated_solve_seconds: Optional[int] = 60
 
+class SessionSubmit(BaseModel):
+    question_ids: List[str]
+    answers: List[int]
+
 class PracticeSession(BaseModel):
     id: Optional[str] = Field(None, alias="_id")
     user_id: str

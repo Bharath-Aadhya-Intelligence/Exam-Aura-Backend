@@ -14,8 +14,9 @@ async def get_daily_questions(user_id: str, count: int = 5) -> List[MCQQuestion]
     
     if not questions:
         # If DB is empty, try to generate via AI
-        # We can fetch user's profile to get context, but for now we use default
-        user_profile = user.get("profile", {})
+        # We fetch user's profile to get context
+        user = await db["users"].find_one({"_id": ObjectId(user_id)})
+        user_profile = user.get("profile", {}) if user else {}
         exam_type = user_profile.get("selected_exam", "NEET")
         subject = "Biology" if exam_type == "NEET" else "Physics"
         topic = "General"

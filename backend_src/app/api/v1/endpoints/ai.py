@@ -12,6 +12,7 @@ async def explain_ai(
     data: dict, 
     current_user: UserPublic = Depends(get_current_user)
 ):
+    """Explains an MCQ question using context from NCERT."""
     explanation = await ai_service.get_ai_explanation(
         data.get("question_text", ""), 
         data.get("student_answer", ""), 
@@ -25,6 +26,7 @@ async def chat_ai(
     request: ChatRequest,
     current_user: UserPublic = Depends(get_current_user)
 ):
+    """General purpose chat with Phi-3 personalization."""
     # Convert Pydantic models to dicts for the service
     messages = [msg.dict() for msg in request.messages]
     
