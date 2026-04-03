@@ -21,14 +21,22 @@ settings = get_settings()
 if settings.GEMINI_API_KEY:
     genai.configure(api_key=settings.GEMINI_API_KEY)
 
-# Initialize Embedding Model (Lazy Loading)
-_embedding_model = None
+# Initialize Embedding Model (Lazy Loading) - NO LONGER NEEDED FOR LOCAL
+# Now using Google Cloud Embeddings
 
-def get_embedding_model():
-    global _embedding_model
-    if _embedding_model is None and SentenceTransformer is not None:
-        _embedding_model = SentenceTransformer(settings.EMBEDDING_MODEL_NAME)
-    return _embedding_model
+async def get_embeddings(text: str) -> np.ndarray:
+    """Get embeddings using Google's Cloud Embedding API."""
+    try:
+        result = await genai.embed_content_async(
+            model="models/gemini-embedding-001",
+            content=text,
+            task_type="retrieval_query",
+        )
+        # Gemini returns a list, convert to numpy array
+        return np.array([result['embedding']])
+    except Exception as e:
+        print(f"Embedding Error: {e}")
+        return np.zeros((1, 768)) # gemini-embedding-001 is 768
 
 async def call_gemini(messages: List[Dict[str, str]]) -> str:
     if not settings.GEMINI_API_KEY:

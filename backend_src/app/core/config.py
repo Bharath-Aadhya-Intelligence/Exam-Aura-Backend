@@ -13,7 +13,6 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str = ""
     
     # AI & RAG Settings
-    EMBEDDING_MODEL_NAME: str = "all-MiniLM-L6-v2"
     FAISS_INDEX_PATH: str = "data/vector_db/ncert_index"
     NCERT_DOCS_PATH: str = "data/ncert_corpus/"
 

@@ -5,14 +5,13 @@ import faiss
 import numpy as np
 import json
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from sentence_transformers import SentenceTransformer
 from app.core.config import get_settings
 from app.db.mongodb import get_database
 import asyncio
 
 settings = get_settings()
 
-async def ingest_json(file_path: str, limit: int = 2000):
+async def ingest_json(file_path: str, limit: int = 1000):
     """Ingest JEE questions from JSON file."""
     print(f"Ingesting JSON: {file_path}")
     with open(file_path, 'r', encoding='utf-8') as f:
@@ -29,7 +28,7 @@ async def ingest_json(file_path: str, limit: int = 2000):
     
     await process_chunks(chunks, file_path, "JEE")
 
-async def ingest_jsonl(file_path: str, limit: int = 2000):
+async def ingest_jsonl(file_path: str, limit: int = 1000):
     """Ingest NEET training data from JSONL file."""
     print(f"Ingesting JSONL: {file_path}")
     chunks = []
@@ -44,33 +43,72 @@ async def ingest_jsonl(file_path: str, limit: int = 2000):
     
     await process_chunks(chunks, file_path, "NEET")
 
+import google.generativeai as genai
+
+async def get_gemini_embeddings(text: str) -> list:
+    """Get embeddings using Google's Cloud Embedding API."""
+    try:
+        result = await genai.embed_content_async(
+            model="models/gemini-embedding-001",
+            content=text,
+            task_type="retrieval_document",
+        )
+        return result['embedding']
+    except Exception as e:
+        print(f"Embedding Error: {e}")
+        return [0.0] * 768
+
 async def process_chunks(chunks: list, source: str, subject: str):
     """Embed chunks and save to FAISS/MongoDB."""
-    print(f"Processing {len(chunks)} chunks for {subject}...")
+    print(f"Processing {len(chunks)} chunks for {subject} with Gemini Embeddings...")
     
-    model = SentenceTransformer(settings.EMBEDDING_MODEL_NAME)
-    embeddings = model.encode(chunks)
+    if not settings.GEMINI_API_KEY:
+        print("Error: GEMINI_API_KEY is missing!")
+        return
+
+    genai.configure(api_key=settings.GEMINI_API_KEY)
     
-    # 1. FAISS Indexing (Incremental/Fresh)
-    # Note: In a real app, you'd add to an existing index. 
-    # For now, we'll follow the pattern of creating a fresh index for the combined knowledge.
+    embeddings = []
+    import asyncio
+    
+    for i, chunk in enumerate(chunks):
+        retry_count = 0
+        while retry_count < 3:
+            try:
+                emb = await get_gemini_embeddings(chunk)
+                embeddings.append(emb)
+                break
+            except Exception as e:
+                if "429" in str(e):
+                    print(f"Rate limit hit, waiting 30s... (Retry {retry_count+1}/3)")
+                    await asyncio.sleep(30)
+                    retry_count += 1
+                else:
+                    raise e
+        
+        # Small delay to stay under RPM
+        await asyncio.sleep(0.6)
+        
+        if (i+1) % 100 == 0:
+            print(f"Embedded {i+1}/{len(chunks)} chunks...")
+            
+    embeddings_np = np.array(embeddings).astype('float32')
+    
+    # 1. FAISS Indexing
     index_path = f"{settings.FAISS_INDEX_PATH}.index"
+    dimension = 768 # gemini-embedding-001
     
-    if os.path.exists(index_path):
-        index = faiss.read_index(index_path)
-    else:
-        dimension = embeddings.shape[1]
-        index = faiss.IndexFlatL2(dimension)
+    # Always create fresh index for this migration or handle dimension change
+    index = faiss.IndexFlatL2(dimension)
+    index.add(embeddings_np)
     
-    start_index = index.ntotal
-    index.add(embeddings.astype('float32'))
     os.makedirs(os.path.dirname(index_path), exist_ok=True)
     faiss.write_index(index, index_path)
     
     # 2. Saving to MongoDB
     db = get_database()
     chunk_docs = [
-        {"index": start_index + i, "text": chunk, "source": source, "subject": subject}
+        {"index": i, "text": chunk, "source": source, "subject": subject}
         for i, chunk in enumerate(chunks)
     ]
     
