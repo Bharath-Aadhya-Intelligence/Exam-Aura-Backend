@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
     GROQ_API_KEY: str = ""
+    OPENAI_API_KEY: str = ""
     
     # Local SLM (Ollama)
     OLLAMA_BASE_URL: str = "http://localhost:11434"
