@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, File, UploadFile
-from ....models.schemas import UserPublic, OnboardingData
-from ....core.deps import get_current_user
-from ....services import user_service
+from backend_src.app.models.schemas import UserPublic, OnboardingData
+from backend_src.app.core.deps import get_current_user
+from backend_src.app.services import user_service
 
 router = APIRouter()
 

@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from .endpoints import auth, users, mcqs, ai, analytics
+from backend_src.app.api.v1.endpoints import auth, users, mcqs, ai, analytics
 
 api_router = APIRouter()
 

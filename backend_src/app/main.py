@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from .api.v1.api_router import api_router
+from backend_src.app.api.v1.api_router import api_router
 
 app = FastAPI(title="PrepAI API", version="1.0.0")
 

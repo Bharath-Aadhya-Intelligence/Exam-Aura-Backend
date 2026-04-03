@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends
 from typing import List
-from ....models.schemas import UserPublic, MCQQuestion, SessionSubmit
-from ....core.deps import get_current_user
-from ....services import mcq_service
+from backend_src.app.models.schemas import UserPublic, MCQQuestion, SessionSubmit
+from backend_src.app.core.deps import get_current_user
+from backend_src.app.services import mcq_service
 
 router = APIRouter()
 

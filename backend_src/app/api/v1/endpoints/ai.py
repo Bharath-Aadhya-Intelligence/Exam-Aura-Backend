@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends
 from typing import List
-from ....models.schemas import UserPublic, ChatRequest, ChatSession, ChatSessionCreate
-from ....core.deps import get_current_user
-from ....services import ai_service
-from ....db.mongodb import ping_database
+from backend_src.app.models.schemas import UserPublic, ChatRequest, ChatSession, ChatSessionCreate
+from backend_src.app.core.deps import get_current_user
+from backend_src.app.services import ai_service
+from backend_src.app.db.mongodb import ping_database
 
 router = APIRouter()
 
