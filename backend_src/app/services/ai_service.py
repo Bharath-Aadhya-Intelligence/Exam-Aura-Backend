@@ -243,15 +243,25 @@ async def get_user_sessions(user_id: str) -> List[Dict[str, Any]]:
         s["_id"] = str(s["_id"])
     return sessions
 
-async def get_session_history(session_id: str) -> List[Dict[str, Any]]:
+async def get_session_history(session_id: str, user_id: str) -> List[Dict[str, Any]]:
     db = get_database()
+    # Verify session ownership
+    session = await db["chat_sessions"].find_one({"_id": ObjectId(session_id), "user_id": user_id})
+    if not session:
+        return []
+        
     history = await db["chat_history"].find_one({"session_id": session_id})
     if history:
         return history["messages"]
     return []
 
-async def save_chat_message(session_id: str, message: Dict[str, str]):
+async def save_chat_message(session_id: str, user_id: str, message: Dict[str, str]):
     db = get_database()
+    # Verify session ownership first
+    session = await db["chat_sessions"].find_one({"_id": ObjectId(session_id), "user_id": user_id})
+    if not session:
+        return
+        
     # Update or create chat history for this session
     await db["chat_history"].update_one(
         {"session_id": session_id},

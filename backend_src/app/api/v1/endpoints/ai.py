@@ -60,7 +60,10 @@ async def get_session_history(
     current_user: UserPublic = Depends(get_current_user)
 ):
     """Load messages for an existing session."""
-    messages = await ai_service.get_session_history(session_id)
+    messages = await ai_service.get_session_history(session_id, current_user.id)
+    if not messages and session_id != "new": # Allow empty for new but prevent unauthorized access
+         # We could be more explicit with a 403, but get_session_history returns [] on no session
+         pass
     return {"messages": messages}
 
 @router.post("/sessions/{session_id}/messages")
@@ -70,11 +73,16 @@ async def add_message_to_session(
     current_user: UserPublic = Depends(get_current_user)
 ):
     """Send a message, save both to history, and get AI response."""
-    # 1. Save user message
-    await ai_service.save_chat_message(session_id, message)
+    # 1. Save user message (this also verifies ownership)
+    await ai_service.save_chat_message(session_id, current_user.id, message)
     
     # 2. Get full history for context
-    history = await ai_service.get_session_history(session_id)
+    history = await ai_service.get_session_history(session_id, current_user.id)
+    
+    if not history:
+        # This means the session didn't belong to the user or didn't exist
+        from fastapi import HTTPException
+        raise HTTPException(status_code=403, detail="Unauthorized access to this chat session")
     
     # 3. Add system prompt
     messages = list(history)
@@ -89,7 +97,7 @@ async def add_message_to_session(
     
     # 5. Save AI response
     assistant_msg = {"role": "assistant", "content": response}
-    await ai_service.save_chat_message(session_id, assistant_msg)
+    await ai_service.save_chat_message(session_id, current_user.id, assistant_msg)
     
     return {"message": response}
 
