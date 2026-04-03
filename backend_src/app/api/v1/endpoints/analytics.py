@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends
-from backend_src.app.models.schemas import UserPublic
+from backend_src.app.models.schemas import UserPublic, AnalyticsDetailedResponse
 from backend_src.app.core.deps import get_current_user
 from backend_src.app.services import analytics_service
 
