@@ -41,7 +41,10 @@ async def get_embeddings(text: str) -> np.ndarray:
 async def call_gemini(messages: List[Dict[str, str]]) -> str:
     if not settings.GEMINI_API_KEY:
         return "AI Error: Gemini API Key is missing. Please add it to your .env file."
-        
+    
+    # Explicitly configure using REST to avoid gRPC v1beta issues on some cloud platforms
+    genai.configure(api_key=settings.GEMINI_API_KEY, transport='rest')
+    
     # Standardize messages for Gemini format
     system_instruction = ""
     chat_history = []
@@ -61,10 +64,9 @@ async def call_gemini(messages: List[Dict[str, str]]) -> str:
     else:
         return "No prompt provided."
 
-    # Try multiple identifiers to resolve the 404/v1beta/regional restriction issue
+    # Robust model identifiers
     models_to_try = [
         'gemini-1.5-flash',
-        'gemini-1.5-flash-latest',
         'gemini-1.5-pro',
         'gemini-1.0-pro'
     ]
@@ -72,23 +74,21 @@ async def call_gemini(messages: List[Dict[str, str]]) -> str:
     last_error = ""
     for m_name in models_to_try:
         try:
-            # Initialize model with system instruction if provided
-            if system_instruction:
-                model = genai.GenerativeModel(model_name=m_name, system_instruction=system_instruction)
-            else:
-                model = genai.GenerativeModel(model_name=m_name)
-                
+            model = genai.GenerativeModel(
+                model_name=m_name, 
+                system_instruction=system_instruction if system_instruction else None
+            )
             chat = model.start_chat(history=chat_history)
             response = await chat.send_message_async(current_prompt)
             return response.text
         except Exception as e:
             last_error = str(e)
-            continue # Try next model
+            continue
             
     return f"Failed to connect to Gemini: {last_error}"
 
 async def check_model_status() -> Dict[str, Any]:
-    """Verify if Gemini is accessible."""
+    """Verify if Gemini is accessible with robust fallback."""
     status = {
         "provider": "Google Gemini",
         "model": "gemini-1.5-flash",
@@ -101,13 +101,22 @@ async def check_model_status() -> Dict[str, Any]:
         return status
 
     try:
+        genai.configure(api_key=settings.GEMINI_API_KEY, transport='rest')
+        # Try a very simple call with the most stable model as a test
         model = genai.GenerativeModel('gemini-1.5-flash')
-        # Simple test call
         response = await model.generate_content_async("ping")
         if response:
             status["reachable"] = True
     except Exception as e:
-        status["error"] = f"Could not connect to Gemini: {str(e)}"
+        # If flash fails, try pro for status check
+        try:
+            model = genai.GenerativeModel('gemini-1.5-pro')
+            response = await model.generate_content_async("ping")
+            if response:
+                status["reachable"] = True
+                status["model"] = "gemini-1.5-pro (fallback)"
+        except Exception as e2:
+            status["error"] = f"All models unreachable. Flash Error: {str(e)} | Pro Error: {str(e2)}"
             
     return status
 
