@@ -42,12 +42,11 @@ async def call_gemini(messages: List[Dict[str, str]]) -> str:
     if not settings.GEMINI_API_KEY:
         return "AI Error: Gemini API Key is missing. Please add it to your .env file."
     
-    # Definitive fix for 404/v1beta issue on Render:
-    # Force the use of the stable 'v1' endpoint and 'rest' transport.
+    # STRICTLY force the 'v1' stable endpoint via client_options and use 'rest' transport
     genai.configure(
         api_key=settings.GEMINI_API_KEY, 
         transport='rest',
-        client_options={'api_endpoint': 'https://generativelanguage.googleapis.com/v1/'}
+        client_options={'api_version': 'v1'}
     )
     
     # Standardize messages for Gemini format
@@ -69,11 +68,11 @@ async def call_gemini(messages: List[Dict[str, str]]) -> str:
     else:
         return "No prompt provided."
 
-    # Robust model identifiers
+    # Use explicit 'models/' prefix required for some v1 endpoint lookups
     models_to_try = [
-        'gemini-1.5-flash',
-        'gemini-1.5-pro',
-        'gemini-1.0-pro'
+        'models/gemini-1.5-flash',
+        'models/gemini-1.5-pro',
+        'models/gemini-1.0-pro'
     ]
     
     last_error = ""
@@ -93,7 +92,7 @@ async def call_gemini(messages: List[Dict[str, str]]) -> str:
     return f"Failed to connect to Gemini: {last_error}"
 
 async def check_model_status() -> Dict[str, Any]:
-    """Verify if Gemini is accessible with robust fallback."""
+    """Verify if Gemini is accessible with strict v1 forcing."""
     status = {
         "provider": "Google Gemini",
         "model": "gemini-1.5-flash",
@@ -109,21 +108,21 @@ async def check_model_status() -> Dict[str, Any]:
         genai.configure(
             api_key=settings.GEMINI_API_KEY, 
             transport='rest',
-            client_options={'api_endpoint': 'https://generativelanguage.googleapis.com/v1/'}
+            client_options={'api_version': 'v1'}
         )
         # Try a very simple call
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        model = genai.GenerativeModel('models/gemini-1.5-flash')
         response = await model.generate_content_async("ping")
         if response:
             status["reachable"] = True
     except Exception as e:
-        # If flash fails, try pro for status check
+        # If flash fails, try pro
         try:
-            model = genai.GenerativeModel('gemini-1.5-pro')
+            model = genai.GenerativeModel('models/gemini-1.5-pro')
             response = await model.generate_content_async("ping")
             if response:
                 status["reachable"] = True
-                status["model"] = "gemini-1.5-pro (fallback)"
+                status["model"] = "models/gemini-1.5-pro (fallback)"
         except Exception as e2:
             status["error"] = f"All models unreachable. Flash Error: {str(e)} | Pro Error: {str(e2)}"
             
