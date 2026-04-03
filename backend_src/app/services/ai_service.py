@@ -68,11 +68,12 @@ async def call_gemini(messages: List[Dict[str, str]]) -> str:
     else:
         return "No prompt provided."
 
-    # Use explicit 'models/' prefix required for some v1 endpoint lookups
+    # Explicitly use 'models/' prefix required for v1 stable and some v2 models
     models_to_try = [
+        'models/gemini-2.0-flash-lite',
+        'models/gemini-2.0-flash-lite-001',
         'models/gemini-1.5-flash',
-        'models/gemini-1.5-pro',
-        'models/gemini-1.0-pro'
+        'models/gemini-1.5-pro'
     ]
     
     last_error = ""
@@ -92,10 +93,10 @@ async def call_gemini(messages: List[Dict[str, str]]) -> str:
     return f"Failed to connect to Gemini: {last_error}"
 
 async def check_model_status() -> Dict[str, Any]:
-    """Verify if Gemini is accessible with strict v1 forcing."""
+    """Verify if Gemini is accessible with version-specific models."""
     status = {
         "provider": "Google Gemini",
-        "model": "gemini-1.5-flash",
+        "model": "gemini-2.0-flash-lite",
         "reachable": False,
         "error": None
     }
@@ -110,21 +111,21 @@ async def check_model_status() -> Dict[str, Any]:
             transport='rest',
             client_options={'api_version': 'v1'}
         )
-        # Try a very simple call
-        model = genai.GenerativeModel('models/gemini-1.5-flash')
+        # Try the model confirmed by the API key list
+        model = genai.GenerativeModel('models/gemini-2.0-flash-lite')
         response = await model.generate_content_async("ping")
         if response:
             status["reachable"] = True
     except Exception as e:
-        # If flash fails, try pro
+        # If 2.0 fails, try 1.5 flash
         try:
-            model = genai.GenerativeModel('models/gemini-1.5-pro')
+            model = genai.GenerativeModel('models/gemini-1.5-flash')
             response = await model.generate_content_async("ping")
             if response:
                 status["reachable"] = True
-                status["model"] = "models/gemini-1.5-pro (fallback)"
+                status["model"] = "models/gemini-1.5-flash (fallback)"
         except Exception as e2:
-            status["error"] = f"All models unreachable. Flash Error: {str(e)} | Pro Error: {str(e2)}"
+            status["error"] = f"All models unreachable. 2.0-Lite Error: {str(e)} | 1.5-Flash Error: {str(e2)}"
             
     return status
 
