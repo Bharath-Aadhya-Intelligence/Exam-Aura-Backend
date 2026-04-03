@@ -9,6 +9,16 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
     GROQ_API_KEY: str = ""
+    
+    # Local SLM (Ollama)
+    OLLAMA_BASE_URL: str = "http://localhost:11434"
+    USE_LOCAL_MODEL: bool = True
+    LOCAL_MODEL_NAME: str = "phi3:medium"
+    
+    # AI & RAG Settings
+    EMBEDDING_MODEL_NAME: str = "all-MiniLM-L6-v2"
+    FAISS_INDEX_PATH: str = "data/vector_db/ncert_index"
+    NCERT_DOCS_PATH: str = "data/ncert_corpus/"
 
     class Config:
         env_file = ".env"

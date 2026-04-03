@@ -47,6 +47,9 @@ class MCQQuestion(BaseModel):
     options: List[str]
     correct_option_index: int
     explanation: str
+    difficulty: Optional[int] = 3
+    bloom_level: Optional[str] = None
+    estimated_solve_seconds: Optional[int] = 60
 
 class PracticeSession(BaseModel):
     id: Optional[str] = Field(None, alias="_id")
@@ -55,3 +58,11 @@ class PracticeSession(BaseModel):
     score: int = 0
     completed: bool = False
     started_at: datetime = Field(default_factory=datetime.utcnow)
+
+# Chat Models
+class ChatMessage(BaseModel):
+    role: str # 'user' or 'assistant' or 'system'
+    content: str
+
+class ChatRequest(BaseModel):
+    messages: List[ChatMessage]
