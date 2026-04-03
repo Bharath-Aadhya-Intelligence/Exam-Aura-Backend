@@ -5,51 +5,64 @@ from ..db.mongodb import get_database
 from .ai_service import generate_mcqs
 from bson import ObjectId
 
-async def get_daily_questions(user_id: str, count: int = 5) -> List[MCQQuestion]:
+async def get_daily_questions(user_id: str, category: str = None, count: int = 20) -> List[MCQQuestion]:
     db = get_database()
     
-    # Try to get questions from DB
-    cursor = db["questions"].find().limit(count)
-    questions = await cursor.to_list(length=count)
-    
-    if not questions:
-        # If DB is empty, try to generate via AI
-        # We fetch user's profile to get context
-        user = await db["users"].find_one({"_id": ObjectId(user_id)})
-        user_profile = user.get("profile", {}) if user else {}
-        exam_type = user_profile.get("selected_exam", "NEET")
-        subject = "Biology" if exam_type == "NEET" else "Physics"
-        topic = "General"
-        
-        # Map confidence_level (0-100 from frontend) to difficulty (1-5)
-        difficulty = 3
-        conf = user_profile.get("confidence_level", 50)
-        # Standardize conf to 0-100 range
-        if isinstance(conf, (int, float)):
-            if conf < 1: conf *= 100 
+    try:
+        # Try to get existing questions from DB
+        query = {}
+        if category:
+            query["subject"] = category
             
-            if conf <= 20: difficulty = 1
-            elif conf <= 40: difficulty = 2
-            elif conf <= 60: difficulty = 3
-            elif conf <= 80: difficulty = 4
-            else: difficulty = 5
+        cursor = db["questions"].find(query).limit(count)
+        questions = await cursor.to_list(length=count)
         
-        generated = await generate_mcqs(
-            topic=topic, 
-            subject=subject, 
-            count=count, 
-            difficulty=difficulty,
-            exam_type=exam_type
-        )
-        
-        if generated:
-            # Save to DB for future use
-            for q in generated:
-                q["_id"] = ObjectId()
-                await db["questions"].insert_one(q)
-            questions = generated
-        else:
-            # Fallback to hardcoded sample questions if AI fails
+        if not questions:
+            # If DB is empty, try to generate via AI
+            try:
+                user = await db["users"].find_one({"_id": ObjectId(user_id)})
+            except Exception:
+                user = None # Handle invalid ObjectId or strings
+                
+            user_profile = user.get("profile", {}) if user else {}
+            exam_type = user_profile.get("selected_exam", "NEET")
+            subject = category if category else ("Biology" if exam_type == "NEET" else "Physics")
+            topic = "General"
+            
+            # Map confidence_level to difficulty
+            difficulty = 3
+            conf = user_profile.get("confidence_level", 50)
+            if isinstance(conf, (int, float)):
+                if conf < 1: conf *= 100 
+                if conf <= 20: difficulty = 1
+                elif conf <= 40: difficulty = 2
+                elif conf <= 60: difficulty = 3
+                elif conf <= 80: difficulty = 4
+                else: difficulty = 5
+            
+            try:
+                # Limit AI generation to a smaller count (e.g., 5) to avoid timeouts
+                # Real users should have ingested data for large counts
+                ai_count = min(count, 5)
+                generated = await generate_mcqs(
+                    topic=topic, 
+                    subject=subject, 
+                    count=ai_count, 
+                    difficulty=difficulty,
+                    exam_type=exam_type
+                )
+                
+                if generated:
+                    for q in generated:
+                        q["_id"] = ObjectId()
+                        await db["questions"].insert_one(q)
+                    questions = generated
+            except Exception as e:
+                print(f"AI Generation Error: {e}")
+                questions = []
+
+        # Fallback to hardcoded sample questions if everything fails
+        if not questions:
             questions = [
                 {
                     "_id": ObjectId(),
@@ -70,10 +83,29 @@ async def get_daily_questions(user_id: str, count: int = 5) -> List[MCQQuestion]
                     "explanation": "Protons have a positive charge of +1e."
                 }
             ]
-    
-    for q in questions:
-        q["id"] = str(q["_id"])
-    return [MCQQuestion(**q) for q in questions]
+        
+        # Format for Pydantic
+        formatted_questions = []
+        for q in questions:
+            q["id"] = str(q.get("_id", ObjectId()))
+            if "_id" in q: del q["_id"]
+            formatted_questions.append(MCQQuestion(**q))
+            
+        return formatted_questions
+    except Exception as e:
+        print(f"MCQ Fetch Error: {e}")
+        # Return hardcoded fallback instead of 500 error
+        return [
+            MCQQuestion(
+                id=str(ObjectId()),
+                subject="General",
+                topic="System",
+                question_text="Could not load your questions. Please check back later.",
+                options=["Acknowledged", "Retry", "Wait", "See Results"],
+                correct_option_index=0,
+                explanation="System Error occurred during fetch."
+            )
+        ]
 
 async def submit_session(user_id: str, question_ids: List[str], answers: List[int]):
     db = get_database()

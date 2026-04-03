@@ -9,9 +9,10 @@ router = APIRouter()
 @router.get("/daily-questions", response_model=List[MCQQuestion])
 async def get_daily_questions(
     category: str = None,
+    count: int = 20,
     current_user: UserPublic = Depends(get_current_user)
 ):
-    return await mcq_service.get_daily_questions(current_user.id, category=category)
+    return await mcq_service.get_daily_questions(current_user.id, category=category, count=count)
 
 @router.post("/submit-session")
 async def submit_session(
