@@ -110,17 +110,21 @@ def get_embeddings(text: str) -> np.ndarray:
     return model.encode([text])
 
 async def retrieve_context(query: str, top_k: int = 3) -> str:
-    """Retrieve relevant NCERT chunks from FAISS index and MongoDB."""
-    if faiss is None:
-        return ""
-        
-    index_path = f"{settings.FAISS_INDEX_PATH}.index"
-    if not os.path.exists(index_path):
-        return "" 
-        
+    """Retrieve relevant context from the FAISS index with stability checks."""
     try:
+        index_path = f"{settings.FAISS_INDEX_PATH}.index"
+        if not os.path.exists(index_path):
+            return ""
+
+        query_vector = await get_embeddings(query)
         index = faiss.read_index(index_path)
-        query_vector = get_embeddings(query)
+        
+        # Stability check: Gemini uses 768-dim vectors. 
+        # If the index is old (e.g., 384-dim), avoid a crash.
+        if index.d != query_vector.shape[1]:
+            print(f"Index dimension mismatch: expected {query_vector.shape[1]}, got {index.d}")
+            return ""
+
         distances, indices = index.search(query_vector.astype('float32'), top_k)
         
         # Look up text for these indices in MongoDB
