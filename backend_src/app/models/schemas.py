@@ -63,6 +63,14 @@ class PracticeSession(BaseModel):
     completed: bool = False
     started_at: datetime = Field(default_factory=datetime.utcnow)
 
+class ChatMessage(BaseModel):
+    role: str # 'user', 'assistant', or 'system'
+    content: str
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+class ChatRequest(BaseModel):
+    messages: List[ChatMessage]
+
 class ChatSession(BaseModel):
     id: Optional[str] = Field(None, alias="_id")
     user_id: str
